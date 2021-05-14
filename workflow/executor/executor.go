@@ -934,6 +934,26 @@ func (we *WorkflowExecutor) Wait(ctx context.Context) error {
 	return nil
 }
 
+func pollChanges(ctx context.Context, pollInterval time.Duration) <-chan struct{} {
+	res := make(chan struct{})
+	go func() {
+		defer close(res)
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			time.Sleep(pollInterval)
+			log.Infof("*** Notify for changes")
+			res <- struct{}{}
+		}
+	}()
+	return res
+}
+
 func watchFileChanges(ctx context.Context, pollInterval time.Duration, filePath string) <-chan struct{} {
 	res := make(chan struct{})
 	go func() {
@@ -976,15 +996,24 @@ func (we *WorkflowExecutor) monitorAnnotations(ctx context.Context) <-chan struc
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, os_specific.GetOsSignal())
 
-	err := we.LoadExecutionControl() // this is much cheaper than doing `get pod`
-	if err != nil {
-		log.Errorf("Failed to reload execution control from annotations: %v", err)
+	if we.PodAnnotationsPath == "" {
+		we.setExecutionControl(ctx)
+	} else {
+		err := we.LoadExecutionControl() // this is much cheaper than doing `get pod`
+		if err != nil {
+			log.Errorf("Failed to reload execution control from annotations: %v", err)
+		}
 	}
 
 	// Create a channel which will notify a listener on new updates to the annotations
 	annotationUpdateCh := make(chan struct{})
 
-	annotationChanges := watchFileChanges(ctx, 10*time.Second, we.PodAnnotationsPath)
+	var annotationChanges <-chan struct{}
+	if we.PodAnnotationsPath == "" {
+		annotationChanges = pollChanges(ctx, 10*time.Second)
+	} else {
+		annotationChanges = watchFileChanges(ctx, 10*time.Second, we.PodAnnotationsPath)
+	}
 	go func() {
 		for {
 			select {
@@ -999,11 +1028,15 @@ func (we *WorkflowExecutor) monitorAnnotations(ctx context.Context) <-chan struc
 				annotationUpdateCh <- struct{}{}
 				we.setExecutionControl(ctx)
 			case <-annotationChanges:
-				log.Infof("%s updated", we.PodAnnotationsPath)
-				err := we.LoadExecutionControl()
-				if err != nil {
-					log.Warnf("Failed to reload execution control from annotations: %v", err)
-					continue
+				if we.PodAnnotationsPath == "" {
+					we.setExecutionControl(ctx)
+				} else {
+					log.Infof("%s updated", we.PodAnnotationsPath)
+					err := we.LoadExecutionControl()
+					if err != nil {
+						log.Warnf("Failed to reload execution control from annotations: %v", err)
+						continue
+					}
 				}
 				if we.ExecutionControl != nil {
 					log.Infof("Execution control reloaded from annotations: %v", *we.ExecutionControl)
@@ -1112,6 +1145,10 @@ func (we *WorkflowExecutor) LoadExecutionControl() error {
 // LoadTemplate reads the template definition from the the Kubernetes downward api annotations volume file
 func LoadTemplate(path string) (*wfv1.Template, error) {
 	var tmpl wfv1.Template
+	if path == "" {
+		log.Infof("*** No pod annotations. Returning empty template")
+		return &tmpl, nil
+	}
 	err := unmarshalAnnotationField(path, common.AnnotationKeyTemplate, &tmpl)
 	if err != nil {
 		return nil, err
