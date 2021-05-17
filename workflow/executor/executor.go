@@ -105,14 +105,13 @@ type ContainerRuntimeExecutor interface {
 }
 
 // NewExecutor instantiates a new workflow executor
-func NewExecutor(clientset kubernetes.Interface, podName, namespace, podAnnotationsPath string, cre ContainerRuntimeExecutor, template wfv1.Template) WorkflowExecutor {
+func NewExecutor(clientset kubernetes.Interface, podName, namespace, podAnnotationsPath string, cre ContainerRuntimeExecutor) WorkflowExecutor {
 	return WorkflowExecutor{
 		PodName:            podName,
 		ClientSet:          clientset,
 		Namespace:          namespace,
 		PodAnnotationsPath: podAnnotationsPath,
 		RuntimeExecutor:    cre,
-		Template:           template,
 		memoizedConfigMaps: map[string]string{},
 		memoizedSecrets:    map[string][]byte{},
 		errors:             []error{},
@@ -947,7 +946,6 @@ func pollChanges(ctx context.Context, pollInterval time.Duration) <-chan struct{
 			}
 
 			time.Sleep(pollInterval)
-			log.Infof("*** Notify for changes")
 			res <- struct{}{}
 		}
 	}()
@@ -1142,18 +1140,31 @@ func (we *WorkflowExecutor) LoadExecutionControl() error {
 	return nil
 }
 
-// LoadTemplate reads the template definition from the the Kubernetes downward api annotations volume file
-func LoadTemplate(path string) (*wfv1.Template, error) {
+// LoadTemplate reads the template definition from the the Kubernetes downward api annotations volume file or API and sets it
+func (we *WorkflowExecutor) LoadTemplate(ctx context.Context, path string) error {
 	var tmpl wfv1.Template
 	if path == "" {
-		log.Infof("*** No pod annotations. Returning empty template")
-		return &tmpl, nil
+		pod, err := we.getPod(ctx)
+		if err != nil {
+			log.Errorf("Failed to get pod template from API server: %v", err)
+			return err
+		}
+		annotations := pod.GetAnnotations()
+		template := annotations[common.AnnotationKeyTemplate]
+		err = json.Unmarshal([]byte(template), &tmpl)
+		if err != nil {
+			log.Errorf("Failed to unmarshal pod template from API server: %v", err)
+			return err
+		}
+		we.Template = tmpl;
+		return nil
 	}
 	err := unmarshalAnnotationField(path, common.AnnotationKeyTemplate, &tmpl)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return &tmpl, nil
+	we.Template = tmpl;
+	return nil
 }
 
 // unmarshalAnnotationField unmarshals the value of an annotation key into the supplied interface

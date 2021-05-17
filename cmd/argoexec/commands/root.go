@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"context"
 
 	"github.com/argoproj/pkg/cli"
 	kubecli "github.com/argoproj/pkg/kube/cli"
@@ -72,7 +73,7 @@ func NewRootCommand() *cobra.Command {
 	return &command
 }
 
-func initExecutor() *executor.WorkflowExecutor {
+func initExecutor(ctx context.Context) *executor.WorkflowExecutor {
 	version := argo.GetVersion()
 	log.WithField("version", version).Info("Starting Workflow Executor")
 	config, err := clientConfig.ClientConfig()
@@ -93,9 +94,6 @@ func initExecutor() *executor.WorkflowExecutor {
 		log.Fatalf("Unable to determine pod name from environment variable %s", common.EnvVarPodName)
 	}
 
-	tmpl, err := executor.LoadTemplate(podAnnotationsPath)
-	checkErr(err)
-
 	var cre executor.ContainerRuntimeExecutor
 	switch executorType {
 	case common.ContainerRuntimeExecutorK8sAPI:
@@ -109,7 +107,11 @@ func initExecutor() *executor.WorkflowExecutor {
 	}
 	checkErr(err)
 
-	wfExecutor := executor.NewExecutor(clientset, podName, namespace, podAnnotationsPath, cre, *tmpl)
+	wfExecutor := executor.NewExecutor(clientset, podName, namespace, podAnnotationsPath, cre)
+
+	err = wfExecutor.LoadTemplate(ctx, podAnnotationsPath)
+	checkErr(err)
+
 	yamlBytes, _ := json.Marshal(&wfExecutor.Template)
 	log.Infof("Executor (version: %s, build_date: %s) initialized (pod: %s/%s) with template:\n%s", version.Version, version.BuildDate, namespace, podName, string(yamlBytes))
 	return &wfExecutor
