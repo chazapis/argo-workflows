@@ -131,7 +131,7 @@ define protoc
 endef
 # docker_build,target,image_name
 define docker_build
-	docker build -t $(IMAGE_NAMESPACE)/$(2):$(VERSION) --target $(1) --progress plain .
+	docker buildx build -t $(IMAGE_NAMESPACE)/$(2):$(VERSION) --target $(1) --progress plain .
 	docker run --rm -t $(IMAGE_NAMESPACE)/$(2):$(VERSION) version
 	if [ $(K3D) = true ]; then k3d image import $(IMAGE_NAMESPACE)/$(2):$(VERSION); fi
 	if [ $(DOCKER_PUSH) = true ] && [ $(IMAGE_NAMESPACE) != argoproj ] ; then docker push $(IMAGE_NAMESPACE)/$(2):$(VERSION) ; fi
