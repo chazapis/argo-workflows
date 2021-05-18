@@ -107,9 +107,15 @@ func initExecutor(ctx context.Context) *executor.WorkflowExecutor {
 	}
 	checkErr(err)
 
-	wfExecutor := executor.NewExecutor(clientset, podName, namespace, podAnnotationsPath, cre)
+	useDownwardAPI := true
+	if os.Getenv(common.EnvVarDownwardAPIUnavailable) == "true" {
+		log.Infof("DownwardAPI volume not available, using API to get pod annotations")
+		useDownwardAPI = false
+	}
 
-	err = wfExecutor.LoadTemplate(ctx, podAnnotationsPath)
+	wfExecutor := executor.NewExecutor(clientset, podName, namespace, podAnnotationsPath, cre, useDownwardAPI)
+
+	err = wfExecutor.LoadTemplate(ctx)
 	checkErr(err)
 
 	yamlBytes, _ := json.Marshal(&wfExecutor.Template)

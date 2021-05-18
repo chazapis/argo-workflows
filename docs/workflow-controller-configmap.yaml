@@ -135,6 +135,9 @@ data:
   # disable the TLS verification of the kubelet executor (default: false)
   kubeletInsecure: false
 
+  # disable mounting a DownwardAPI volume at the executor and using it for getting pod annotations
+  downwardAPIUnavailable: false
+
   # executor controls how the init and wait container should be customized
   # (available since Argo v2.3)
   executor: |

@@ -428,7 +428,7 @@ func (woc *wfOperationCtx) newInitContainer(tmpl *wfv1.Template) apiv1.Container
 
 func (woc *wfOperationCtx) newWaitContainer(tmpl *wfv1.Template) *apiv1.Container {
 	ctr := woc.newExecContainer(common.WaitContainerName, tmpl)
-	ctr.Command = []string{"argoexec", "wait", "--pod-annotations", "", "--loglevel", getExecutorLogLevel()}
+	ctr.Command = []string{"argoexec", "wait", "--loglevel", getExecutorLogLevel()}
 	switch woc.getContainerRuntimeExecutor() {
 	case common.ContainerRuntimeExecutorPNS:
 		ctr.SecurityContext = &apiv1.SecurityContext{
@@ -496,6 +496,10 @@ func (woc *wfOperationCtx) createEnvVars() []apiv1.EnvVar {
 			Name:  "GODEBUG",
 			Value: "x509ignoreCN=0",
 		},
+		{
+			Name: common.EnvVarDownwardAPIUnavailable,
+			Value: strconv.FormatBool(woc.controller.Config.DownwardAPIUnavailable),
+		},
 	}
 	if woc.controller.Config.Executor != nil {
 		execEnvVars = append(execEnvVars, woc.controller.Config.Executor.Env...)
@@ -543,8 +547,9 @@ func (woc *wfOperationCtx) createEnvVars() []apiv1.EnvVar {
 }
 
 func (woc *wfOperationCtx) createVolumes(tmpl *wfv1.Template) []apiv1.Volume {
-	volumes := []apiv1.Volume{
-		// volumePodMetadata,
+	volumes := []apiv1.Volume{}
+	if woc.controller.Config.DownwardAPIUnavailable == false {
+		volumes = append(volumes, volumePodMetadata)
 	}
 	if woc.controller.Config.KubeConfig != nil {
 		name := woc.controller.Config.KubeConfig.VolumeName
@@ -574,9 +579,10 @@ func (woc *wfOperationCtx) newExecContainer(name string, tmpl *wfv1.Template) *a
 		Image:           woc.controller.executorImage(),
 		ImagePullPolicy: woc.controller.executorImagePullPolicy(),
 		Env:             woc.createEnvVars(),
-		VolumeMounts: []apiv1.VolumeMount{
-			// volumeMountPodMetadata,
-		},
+		VolumeMounts:    []apiv1.VolumeMount{},
+	}
+	if woc.controller.Config.DownwardAPIUnavailable == false {
+		exec.VolumeMounts = append(exec.VolumeMounts, volumeMountPodMetadata)
 	}
 	if woc.controller.Config.Executor != nil {
 		exec.Args = woc.controller.Config.Executor.Args

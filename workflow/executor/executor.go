@@ -66,6 +66,7 @@ type WorkflowExecutor struct {
 	PodAnnotationsPath string
 	ExecutionControl   *common.ExecutionControl
 	RuntimeExecutor    ContainerRuntimeExecutor
+	UseDownwardAPI     bool
 
 	// memoized configmaps
 	memoizedConfigMaps map[string]string
@@ -105,13 +106,14 @@ type ContainerRuntimeExecutor interface {
 }
 
 // NewExecutor instantiates a new workflow executor
-func NewExecutor(clientset kubernetes.Interface, podName, namespace, podAnnotationsPath string, cre ContainerRuntimeExecutor) WorkflowExecutor {
+func NewExecutor(clientset kubernetes.Interface, podName, namespace, podAnnotationsPath string, cre ContainerRuntimeExecutor, useDownwardAPI bool) WorkflowExecutor {
 	return WorkflowExecutor{
 		PodName:            podName,
 		ClientSet:          clientset,
 		Namespace:          namespace,
 		PodAnnotationsPath: podAnnotationsPath,
 		RuntimeExecutor:    cre,
+		UseDownwardAPI:     useDownwardAPI,
 		memoizedConfigMaps: map[string]string{},
 		memoizedSecrets:    map[string][]byte{},
 		errors:             []error{},
@@ -994,7 +996,7 @@ func (we *WorkflowExecutor) monitorAnnotations(ctx context.Context) <-chan struc
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, os_specific.GetOsSignal())
 
-	if we.PodAnnotationsPath == "" {
+	if !we.UseDownwardAPI {
 		we.setExecutionControl(ctx)
 	} else {
 		err := we.LoadExecutionControl() // this is much cheaper than doing `get pod`
@@ -1007,7 +1009,7 @@ func (we *WorkflowExecutor) monitorAnnotations(ctx context.Context) <-chan struc
 	annotationUpdateCh := make(chan struct{})
 
 	var annotationChanges <-chan struct{}
-	if we.PodAnnotationsPath == "" {
+	if !we.UseDownwardAPI {
 		annotationChanges = pollChanges(ctx, 10*time.Second)
 	} else {
 		annotationChanges = watchFileChanges(ctx, 10*time.Second, we.PodAnnotationsPath)
@@ -1026,7 +1028,7 @@ func (we *WorkflowExecutor) monitorAnnotations(ctx context.Context) <-chan struc
 				annotationUpdateCh <- struct{}{}
 				we.setExecutionControl(ctx)
 			case <-annotationChanges:
-				if we.PodAnnotationsPath == "" {
+				if !we.UseDownwardAPI {
 					we.setExecutionControl(ctx)
 				} else {
 					log.Infof("%s updated", we.PodAnnotationsPath)
@@ -1141,9 +1143,9 @@ func (we *WorkflowExecutor) LoadExecutionControl() error {
 }
 
 // LoadTemplate reads the template definition from the the Kubernetes downward api annotations volume file or API and sets it
-func (we *WorkflowExecutor) LoadTemplate(ctx context.Context, path string) error {
+func (we *WorkflowExecutor) LoadTemplate(ctx context.Context) error {
 	var tmpl wfv1.Template
-	if path == "" {
+	if !we.UseDownwardAPI {
 		pod, err := we.getPod(ctx)
 		if err != nil {
 			log.Errorf("Failed to get pod template from API server: %v", err)
@@ -1159,7 +1161,7 @@ func (we *WorkflowExecutor) LoadTemplate(ctx context.Context, path string) error
 		we.Template = tmpl;
 		return nil
 	}
-	err := unmarshalAnnotationField(path, common.AnnotationKeyTemplate, &tmpl)
+	err := unmarshalAnnotationField(we.PodAnnotationsPath, common.AnnotationKeyTemplate, &tmpl)
 	if err != nil {
 		return err
 	}
