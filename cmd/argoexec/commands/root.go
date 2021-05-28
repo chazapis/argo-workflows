@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"time"
 
 	wfv1 "github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
 
@@ -102,7 +101,6 @@ func initExecutor() *executor.WorkflowExecutor {
 	checkErr(json.Unmarshal([]byte(os.Getenv(common.EnvVarTemplate)), tmpl))
 
 	includeScriptOutput := os.Getenv(common.EnvVarIncludeScriptOutput) == "true"
-	deadline, err := time.Parse(time.RFC3339, os.Getenv(common.EnvVarDeadline))
 	checkErr(err)
 
 	var cre executor.ContainerRuntimeExecutor
@@ -120,14 +118,13 @@ func initExecutor() *executor.WorkflowExecutor {
 	}
 	checkErr(err)
 
-	wfExecutor := executor.NewExecutor(clientset, restClient, podName, namespace, cre, *tmpl, includeScriptOutput, deadline)
+	wfExecutor := executor.NewExecutor(clientset, restClient, podName, namespace, cre, *tmpl, includeScriptOutput)
 	log.
 		WithField("version", version.String()).
 		WithField("namespace", namespace).
 		WithField("podName", podName).
 		WithField("template", wfv1.MustMarshallJSON(&wfExecutor.Template)).
 		WithField("includeScriptOutput", includeScriptOutput).
-		WithField("deadline", deadline).
 		Info("Executor initialized")
 	return &wfExecutor
 }

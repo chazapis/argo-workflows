@@ -1338,67 +1338,6 @@ func TestGetPodTemplate(t *testing.T) {
 	}
 }
 
-func TestGetPodDeadline(t *testing.T) {
-	tests := []struct {
-		name string
-		pod  *apiv1.Pod
-		want time.Time
-	}{{
-		name: "missing deadline",
-		pod: &apiv1.Pod{
-			Spec: apiv1.PodSpec{
-				Containers: []apiv1.Container{
-					{
-						Env: []apiv1.EnvVar{},
-					},
-				},
-			},
-		},
-		want: time.Time{},
-	}, {
-		name: "zero deadline",
-		pod: &apiv1.Pod{
-			Spec: apiv1.PodSpec{
-				Containers: []apiv1.Container{
-					{
-						Env: []apiv1.EnvVar{
-							{
-								Name: common.EnvVarDeadline,
-								Value: "0001-01-01T00:00:00Z",
-							},
-						},
-					},
-				},
-			},
-		},
-		want: time.Time{},
-	}, {
-		name: "a deadline",
-		pod: &apiv1.Pod{
-			Spec: apiv1.PodSpec{
-				Containers: []apiv1.Container{
-					{
-						Env: []apiv1.EnvVar{
-							{
-								Name: common.EnvVarDeadline,
-								Value: "2021-01-21T01:02:03Z",
-							},
-						},
-					},
-				},
-			},
-		},
-		want: time.Date(2021, time.Month(1), 21, 1, 2, 3, 0, time.UTC),
-	}}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, _ := getPodDeadline(tt.pod)
-			assert.Equal(t, tt.want, got)
-		})
-	}
-}
-
 var workflowStepRetry = `
 apiVersion: argoproj.io/v1alpha1
 kind: Workflow
@@ -5792,7 +5731,7 @@ func TestWFWithRetryAndWithParam(t *testing.T) {
 			ctrs := pods.Items[0].Spec.Containers
 			assert.Len(t, ctrs, 2)
 			envs := ctrs[1].Env
-			assert.Len(t, envs, 4)
+			assert.Len(t, envs, 3)
 			assert.Equal(t, apiv1.EnvVar{Name: "ARGO_INCLUDE_SCRIPT_OUTPUT", Value: "true"}, envs[2])
 		}
 	})

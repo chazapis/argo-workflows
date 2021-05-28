@@ -1346,16 +1346,15 @@ container:
 `
 
 func TestPropagateMaxDuration(t *testing.T) {
-	// Ensure that volume mount is added when artifact is provided
 	tmpl := unmarshalTemplate(propagateMaxDuration)
 	woc := newWoc()
-	deadline := time.Time{}.Add(time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	ctx := context.Background()
 	pod, err := woc.createWorkflowPod(ctx, tmpl.Name, []apiv1.Container{*tmpl.Container}, tmpl, &createWorkflowPodOpts{executionDeadline: deadline})
 	assert.NoError(t, err)
-	v, err := getPodDeadline(pod)
-	assert.NoError(t, err)
-	assert.Equal(t, v, deadline)
+	assert.NotNil(t, pod)
+	activeDeadlineSeconds := int64(*pod.Spec.ActiveDeadlineSeconds)
+	assert.True(t, activeDeadlineSeconds > 0 && activeDeadlineSeconds <= 10)
 }
 
 var wfWithPodMetadata = `
@@ -1422,23 +1421,4 @@ func TestPodMetadata(t *testing.T) {
 	assert.Equal(t, "buzz", pod.ObjectMeta.Labels["workflow-level-pod-label"])
 	assert.Equal(t, "hello", pod.ObjectMeta.Annotations["template-level-pod-annotation"])
 	assert.Equal(t, "world", pod.ObjectMeta.Labels["template-level-pod-label"])
-}
-
-func TestGetDeadline(t *testing.T) {
-	wf := wfv1.MustUnmarshalWorkflow(helloWorldWf)
-	ctx := context.Background()
-	woc := newWoc(*wf)
-	mainCtr := woc.execWf.Spec.Templates[0].Container
-	pod, _ := woc.createWorkflowPod(ctx, wf.Name, []apiv1.Container{*mainCtr}, &wf.Spec.Templates[0], &createWorkflowPodOpts{})
-	deadline, _ := getPodDeadline(pod)
-	assert.Equal(t, time.Time{}, deadline)
-
-	executionDeadline := time.Now().Add(5 * time.Minute)
-	wf = wfv1.MustUnmarshalWorkflow(helloWorldWf)
-	ctx = context.Background()
-	woc = newWoc(*wf)
-	mainCtr = woc.execWf.Spec.Templates[0].Container
-	pod, _ = woc.createWorkflowPod(ctx, wf.Name, []apiv1.Container{*mainCtr}, &wf.Spec.Templates[0], &createWorkflowPodOpts{executionDeadline: executionDeadline})
-	deadline, _ = getPodDeadline(pod)
-	assert.Equal(t, executionDeadline.Format(time.RFC3339), deadline.Format(time.RFC3339))
 }

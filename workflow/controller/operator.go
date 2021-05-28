@@ -1202,17 +1202,6 @@ func getPodTemplate(pod *apiv1.Pod) (*wfv1.Template, error) {
 	return nil, fmt.Errorf("not found")
 }
 
-func getPodDeadline(pod *apiv1.Pod) (time.Time, error) {
-	for _, c := range pod.Spec.Containers {
-		for _, e := range c.Env {
-			if e.Name == common.EnvVarDeadline {
-				return time.Parse(time.RFC3339, e.Value)
-			}
-		}
-	}
-	return time.Time{}, fmt.Errorf("not found")
-}
-
 func getExitCode(pod *apiv1.Pod) *int32 {
 	for _, c := range pod.Status.ContainerStatuses {
 		if c.Name == common.MainContainerName && c.State.Terminated != nil {

@@ -89,8 +89,6 @@ const (
 	EnvVarPodName = "ARGO_POD_NAME"
 	// EnvVarContainerName container the container's name for the current pod
 	EnvVarContainerName = "ARGO_CONTAINER_NAME"
-	// EnvVarDeadline is the deadline for the pod
-	EnvVarDeadline = "ARGO_DEADLINE"
 	// EnvVarIncludeScriptOutput capture the stdout and stderr
 	EnvVarIncludeScriptOutput = "ARGO_INCLUDE_SCRIPT_OUTPUT"
 	// EnvVarTemplate is the template

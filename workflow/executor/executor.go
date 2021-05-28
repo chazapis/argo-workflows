@@ -64,7 +64,6 @@ type WorkflowExecutor struct {
 	PodName             string
 	Template            wfv1.Template
 	IncludeScriptOutput bool
-	Deadline            time.Time
 	ClientSet           kubernetes.Interface
 	RESTClient          rest.Interface
 	Namespace           string
@@ -108,7 +107,7 @@ type ContainerRuntimeExecutor interface {
 }
 
 // NewExecutor instantiates a new workflow executor
-func NewExecutor(clientset kubernetes.Interface, restClient rest.Interface, podName, namespace string, cre ContainerRuntimeExecutor, template wfv1.Template, includeScriptOutput bool, deadline time.Time) WorkflowExecutor {
+func NewExecutor(clientset kubernetes.Interface, restClient rest.Interface, podName, namespace string, cre ContainerRuntimeExecutor, template wfv1.Template, includeScriptOutput bool) WorkflowExecutor {
 	return WorkflowExecutor{
 		PodName:             podName,
 		ClientSet:           clientset,
@@ -117,7 +116,6 @@ func NewExecutor(clientset kubernetes.Interface, restClient rest.Interface, podN
 		RuntimeExecutor:     cre,
 		Template:            template,
 		IncludeScriptOutput: includeScriptOutput,
-		Deadline:            deadline,
 		memoizedConfigMaps:  map[string]string{},
 		memoizedSecrets:     map[string][]byte{},
 		errors:              []error{},
@@ -927,28 +925,17 @@ func (we *WorkflowExecutor) Wait(ctx context.Context) error {
 	return nil
 }
 
-// monitorDeadline checks to see if we exceeded the deadline for the step and
-// terminates the main container if we did
+// monitorDeadline waits for a termination signal for the step and terminates the main
+// container when it arrives
 func (we *WorkflowExecutor) monitorDeadline(ctx context.Context, containerNames []string) {
 	terminate := make(chan os.Signal, 1)
 	signal.Notify(terminate, syscall.SIGTERM)
-
-	deadlineExceeded := make(chan bool, 1)
-	if !we.Deadline.IsZero() {
-		t := time.AfterFunc(time.Until(we.Deadline), func() {
-			deadlineExceeded <- true
-		})
-		defer t.Stop()
-	}
 
 	log.Infof("Starting deadline monitor")
 	for {
 		select {
 		case <-ctx.Done():
 			log.Info("Deadline monitor stopped")
-			return
-		case <-deadlineExceeded:
-			we.killMainContainer(ctx, containerNames, "Step exceeded its deadline")
 			return
 		case <-terminate:
 			we.killMainContainer(ctx, containerNames, "Step terminated")

@@ -157,7 +157,10 @@ func (woc *wfOperationCtx) createWorkflowPod(ctx context.Context, nodeName strin
 	}
 
 	var activeDeadlineSeconds *int64
-	wfDeadline := woc.getWorkflowDeadline()
+	wfDeadline := woc.getWorkflowDeadline() // the deadline from the workflow spec
+	if !opts.executionDeadline.IsZero() && (wfDeadline == nil || opts.executionDeadline.Before(*wfDeadline)) {
+		wfDeadline = &opts.executionDeadline // the deadline from the controller configuration
+	}
 	tmplActiveDeadlineSeconds, err := intstr.Int64(tmpl.ActiveDeadlineSeconds)
 	if err != nil {
 		return nil, err
@@ -298,20 +301,16 @@ func (woc *wfOperationCtx) createWorkflowPod(ctx context.Context, nodeName strin
 	}
 
 	// Add standard environment variables, making pod spec larger
-	envVars := []apiv1.EnvVar{
-		{Name: common.EnvVarTemplate, Value: wfv1.MustMarshallJSON(tmpl)},
-		{Name: common.EnvVarIncludeScriptOutput, Value: strconv.FormatBool(opts.includeScriptOutput)},
-		{Name: common.EnvVarDeadline, Value: woc.getDeadline(opts).Format(time.RFC3339)},
-	}
-
 	for i, c := range pod.Spec.InitContainers {
 		c.Env = append(c.Env, apiv1.EnvVar{Name: common.EnvVarContainerName, Value: c.Name})
-		c.Env = append(c.Env, envVars...)
 		pod.Spec.InitContainers[i] = c
 	}
 	for i, c := range pod.Spec.Containers {
 		c.Env = append(c.Env, apiv1.EnvVar{Name: common.EnvVarContainerName, Value: c.Name})
-		c.Env = append(c.Env, envVars...)
+		c.Env = append(c.Env,
+			apiv1.EnvVar{Name: common.EnvVarTemplate, Value: wfv1.MustMarshallJSON(tmpl)},
+			apiv1.EnvVar{Name: common.EnvVarIncludeScriptOutput, Value: strconv.FormatBool(opts.includeScriptOutput)},
+		)
 		pod.Spec.Containers[i] = c
 	}
 
@@ -417,17 +416,6 @@ func (woc *wfOperationCtx) createWorkflowPod(ctx context.Context, nodeName strin
 	woc.log.Infof("Created pod: %s (%s)", nodeName, created.Name)
 	woc.activePods++
 	return created, nil
-}
-
-func (woc *wfOperationCtx) getDeadline(opts *createWorkflowPodOpts) *time.Time {
-	deadline := time.Time{}
-	if woc.workflowDeadline != nil {
-		deadline = *woc.workflowDeadline
-	}
-	if !opts.executionDeadline.IsZero() && (deadline.IsZero() || opts.executionDeadline.Before(deadline)) {
-		deadline = opts.executionDeadline
-	}
-	return &deadline
 }
 
 func (woc *wfOperationCtx) getImage(image string) config.Image {
