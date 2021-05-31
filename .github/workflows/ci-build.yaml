@@ -5,6 +5,7 @@ on:
       - "master"
       - "release-*"
       - "!release-2.8"
+      - "remove-execution-control-test"
   pull_request:
     branches:
       - "master"
@@ -114,11 +115,7 @@ jobs:
         timeout-minutes: 4
       - name: make/pull argoexec-image
         run: |
-          if [ ${{matrix.test}} == test-executor ]; then
-            make argoexec-image STATIC_FILES=false
-          else
-            docker pull argoproj/argoexec:latest
-          fi
+          make argoexec-image STATIC_FILES=false
       - run: make wait
         timeout-minutes: 4
       - run: make ${{matrix.test}} E2E_TIMEOUT=1m STATIC_FILES=false
